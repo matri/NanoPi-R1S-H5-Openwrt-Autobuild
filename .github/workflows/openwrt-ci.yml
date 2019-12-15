@@ -31,13 +31,7 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          docker rmi `docker images -q`
-          echo "Deleting files, please wait ..."
-          sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php
-          sudo -E apt-get -y purge azure-cli ghc* zulu* hhvm llvm* firefox google* dotnet* powershell openjdk* mysql* php*
           sudo -E apt-get update
-          sudo -E apt-get -y install build-essential asciidoc binutils bzip2 gawk gettext git libncurses5-dev libz-dev patch unzip zlib1g-dev lib32gcc1 libc6-dev-i386 subversion flex uglifyjs git-core gcc-multilib p7zip p7zip-full msmtp libssl-dev texinfo libglib2.0-dev xmlto qemu-utils upx libelf-dev autoconf automake libtool autopoint device-tree-compiler
-          sudo -E apt-get -y autoremove --purge
           sudo -E apt-get clean
           sudo wget -O - https://raw.githubusercontent.com/friendlyarm/build-env-on-ubuntu-bionic/master/install.sh | bash
           sudo -E apt-get -y install bc
@@ -54,8 +48,8 @@ jobs:
           sudo cp repo/repo /usr/bin/
           mkdir friendlywrt-h5
           cd friendlywrt-h5
-          repo init -u https://github.com/friendlyarm/friendlywrt_manifests -b master -m h5.xml --repo-url=https://github.com/friendlyarm/repo  --no-clone-bundle
-          repo sync -c  --no-clone-bundle
+          repo init -u https://github.com/friendlyarm/friendlywrt_manifests -b master-v18.06.1 -m h5.xml --repo-url=https://github.com/friendlyarm/repo  --no-clone-bundle
+          repo sync -c  --no-clone-bundle -j$(nproc)
 
       - name: Merge upstearm OpenWrt source
         run: |
@@ -85,7 +79,14 @@ jobs:
       - name: SSH connection to Actions
         uses: P3TERX/debugger-action@master
 
+      - name: Backup step, only run if previous step status check is failure
+        if: failure()
+        run: |
+          [ -e friendlywrt-h5/friendlywrt/.config ] || cp NanoPi-R1S-H5.config friendlywrt-h5/friendlywrt/.config
+          cat friendlywrt-h5/friendlywrt/.config
+
       - name: Download package
+        if: always()
         run: |
           cd friendlywrt-h5/friendlywrt
           make download -j8
@@ -93,22 +94,26 @@ jobs:
           find dl -size -1024c -exec rm -f {} \;
 
       - name: Build
+        if: always()
         run: |
           cd friendlywrt-h5
           echo "Start building..."
           ./build.sh nanopi_r1s.mk
 
       - name: Zip Files
+        if: always()
         run: |
           find friendlywrt-h5/out/ -name "FriendlyWrt_*img*" | xargs -i zip -r {}.zip {}
 
       - name: Assemble Artifact
+        if: always()
         run: |
           rm -rf ./artifact/
           mkdir -p ./artifact/
           find friendlywrt-h5/out/ -name "FriendlyWrt_*img.zip*" | xargs -i mv -f {} ./artifact/
 
       - name: Upload Artifact
+        if: always()
         uses: actions/upload-artifact@master
         with:
           name: FriendlyWrt_NanoPi-R1S
